@@ -1,3 +1,15 @@
+
+
+Skip to content
+Using Gmail with screen readers
+
+Unsubscribe from KAYAK?
+You haven't opened any emails from this sender in the last month
+Conversations
+30% of 15 GB used
+Terms · Privacy · Program Policies
+Last account activity: 0 minutes ago
+Open in 1 other location · Details
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -379,6 +391,16 @@ html,body{height:100%;background:var(--navy);color:var(--white);font-family:'Int
 </div>
 
 <!-- MODALS -->
+<div class="modal-overlay hidden" id="modal-edit-session">
+  <div class="modal">
+    <div class="modal-handle"></div>
+    <div class="modal-title">Edit Session</div>
+    <div id="edit-session-content"></div>
+    <button class="btn btn-primary" style="margin-top:16px" onclick="saveEditedSession()">Save Changes</button>
+    <button class="btn btn-outline" onclick="closeModal('modal-edit-session')">Cancel</button>
+  </div>
+</div>
+
 <div class="modal-overlay hidden" id="modal-user-select">
   <div class="modal">
     <div class="modal-handle"></div>
@@ -467,6 +489,8 @@ let progressViewUser = null;
 let planEditorUser = null;
 let planEditorDayIndex = 0;
 let logSetData = {}; // exerciseIndex -> [{weight,reps,done}]
+let editingSessionId = null;
+let editSetData = {};
 
 const AUSTIN_PLAN = {
   days: [
@@ -848,7 +872,111 @@ function openDetail(sessionId) {
     });
     content.appendChild(exCard);
   }
+  // Edit and Delete buttons
+  const actionsDiv = document.createElement('div');
+  actionsDiv.style.cssText = 'margin-top:4px';
+  actionsDiv.innerHTML = `
+    <button class="btn btn-outline" onclick="openEditSession('${sessionId}')">Edit Session</button>
+    <button class="btn" id="del-btn-${sessionId}" style="background:rgba(255,76,76,.1);border:1px solid rgba(255,76,76,.2);color:var(--red);margin-top:10px;width:100%;padding:15px;border-radius:12px;font-family:'Inter',sans-serif;font-weight:600;font-size:15px;cursor:pointer" onclick="confirmDeleteSession('${sessionId}')">Delete Session</button>
+    <button class="btn" id="del-confirm-${sessionId}" style="display:none;background:var(--red);color:#fff;margin-top:10px;width:100%;padding:15px;border-radius:12px;font-family:'Inter',sans-serif;font-weight:600;font-size:15px;cursor:pointer" onclick="deleteSession('${sessionId}')">Confirm Delete?</button>
+  `;
+  content.appendChild(actionsDiv);
   showScreen('screen-detail');
+}
+
+// ─── EDIT / DELETE SESSION ───────────────────────────────
+function openEditSession(sessionId) {
+  const s = sessions[sessionId];
+  if (!s) return;
+  editingSessionId = sessionId;
+  editSetData = {};
+  const container = document.getElementById('edit-session-content');
+  container.innerHTML = '';
+
+  if (s.type === 'gym' && s.exercises) {
+    (s.exercises || []).forEach((ex, ei) => {
+      editSetData[ei] = (ex.sets || []).map(st => ({weight: st.weight||'', reps: st.reps||'', done: st.done||false}));
+      const exDiv = document.createElement('div');
+      exDiv.style.cssText = 'margin-bottom:16px';
+      exDiv.innerHTML = `<div style="font-weight:600;font-size:14px;margin-bottom:8px">${ex.name}</div><div id="edit-sets-${ei}"></div><button onclick="addEditSet(${ei})" style="background:none;border:1px dashed var(--border);color:var(--slate);border-radius:8px;padding:6px 12px;font-size:12px;cursor:pointer;width:100%;margin-top:4px">+ Add Set</button>`;
+      container.appendChild(exDiv);
+      renderEditSets(ei);
+    });
+  } else {
+    container.innerHTML = `
+      <div class="input-group"><div class="input-label">Duration (minutes)</div><input class="text-input" id="edit-duration" type="number" value="${s.duration||''}"></div>
+      <div class="input-group"><div class="input-label">Intensity</div><select class="select-input" id="edit-intensity"><option ${s.intensity==='light'?'selected':''}>light</option><option ${s.intensity==='moderate'?'selected':''}>moderate</option><option ${s.intensity==='heavy'?'selected':''}>heavy</option></select></div>
+    `;
+  }
+  // Notes
+  const notesDiv = document.createElement('div');
+  notesDiv.innerHTML = `<div class="input-label" style="margin-bottom:6px">Session Notes</div><textarea class="notes-area" id="edit-notes" rows="3">${s.notes||''}</textarea>`;
+  container.appendChild(notesDiv);
+  openModal('modal-edit-session');
+}
+
+function renderEditSets(ei) {
+  const container = document.getElementById(`edit-sets-${ei}`);
+  if (!container) return;
+  container.innerHTML = '';
+  const headers = document.createElement('div');
+  headers.style.cssText = 'display:grid;grid-template-columns:38px 1fr 14px 1fr 32px;gap:6px;margin-bottom:4px;padding-bottom:4px;border-bottom:1px solid var(--border)';
+  headers.innerHTML = `<div style="font-size:10px;color:var(--slate);text-align:center">Set</div><div style="font-size:10px;color:var(--slate);text-align:center">Weight</div><div></div><div style="font-size:10px;color:var(--slate);text-align:center">Reps</div><div></div>`;
+  container.appendChild(headers);
+  (editSetData[ei] || []).forEach((s, si) => {
+    const row = document.createElement('div');
+    row.className = 'set-row';
+    row.innerHTML = `<div class="set-label">${si+1}</div><input class="set-input" type="number" inputmode="decimal" placeholder="lbs" value="${s.weight}" onchange="editSetData[${ei}][${si}].weight=this.value"><div class="set-x">×</div><input class="set-input" type="number" inputmode="numeric" placeholder="reps" value="${s.reps}" onchange="editSetData[${ei}][${si}].reps=this.value"><div class="set-check ${s.done?'done':''}" onclick="editSetData[${ei}][${si}].done=!editSetData[${ei}][${si}].done;renderEditSets(${ei})"><svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2 6L5 9L10 3" stroke="white" stroke-width="1.8" stroke-linecap="round"/></svg></div>`;
+    container.appendChild(row);
+  });
+}
+
+function addEditSet(ei) {
+  editSetData[ei].push({weight:'',reps:'',done:false});
+  renderEditSets(ei);
+}
+
+function saveEditedSession() {
+  const s = sessions[editingSessionId];
+  if (!s) return;
+  const notes = document.getElementById('edit-notes')?.value.trim() || '';
+  if (s.type === 'gym' && s.exercises) {
+    s.exercises = s.exercises.map((ex, ei) => ({
+      ...ex,
+      sets: (editSetData[ei] || []).filter(st => st.weight||st.reps).map(st => ({weight: parseFloat(st.weight)||0, reps: parseInt(st.reps)||0, done: st.done}))
+    }));
+  } else {
+    s.duration = parseInt(document.getElementById('edit-duration')?.value) || s.duration;
+    s.intensity = document.getElementById('edit-intensity')?.value || s.intensity;
+  }
+  s.notes = notes;
+  sessions[editingSessionId] = s;
+  persist();
+  closeModal('modal-edit-session');
+  openDetail(editingSessionId);
+  showToast('Session updated!');
+  renderHomeStats();
+  renderHistoryList();
+  renderProgress();
+}
+
+function confirmDeleteSession(sessionId) {
+  const delBtn = document.getElementById('del-btn-' + sessionId);
+  const confirmBtn = document.getElementById('del-confirm-' + sessionId);
+  if (delBtn) delBtn.style.display = 'none';
+  if (confirmBtn) confirmBtn.style.display = '';
+  setTimeout(() => {
+    if (delBtn) delBtn.style.display = '';
+    if (confirmBtn) confirmBtn.style.display = 'none';
+  }, 3000);
+}
+
+function deleteSession(sessionId) {
+  delete sessions[sessionId];
+  persist();
+  showToast('Session deleted');
+  showScreen('screen-history');
+  renderAll();
 }
 
 // ─── PROGRESS ─────────────────────────────────────────────
@@ -1207,3 +1335,5 @@ init();
 </script>
 </body>
 </html>
+Index2.html
+Displaying Index2.html.
