@@ -715,6 +715,41 @@ const MCKENNA_PLAN = {
   ]
 };
 
+const MELISSA_PLAN = {
+  days: [
+    { name: 'Full Body Strength A', suggestedCategory: 'Legs', exercises: [
+      {name:'DB Goblet Squat',sets:3,reps:12},
+      {name:'DB Romanian Deadlift',sets:3,reps:12},
+      {name:'DB Bench Press',sets:3,reps:10},
+      {name:'DB Row (each side)',sets:3,reps:12},
+      {name:'Plank Hold',sets:3,reps:0},
+      {name:'Dead Bug',sets:3,reps:10}
+    ]},
+    { name: 'Cardio + Core', suggestedCategory: 'Aerobic', exercises: [
+      {name:'Jump Rope',sets:3,reps:0},
+      {name:'Incline Treadmill Walk',sets:1,reps:0},
+      {name:'Hollow Body Hold',sets:3,reps:0},
+      {name:'Bird Dog',sets:3,reps:10},
+      {name:'Pallof Press',sets:3,reps:12}
+    ]},
+    { name: 'Full Body Strength B', suggestedCategory: 'Shoulders', exercises: [
+      {name:'DB Romanian Deadlift',sets:3,reps:12},
+      {name:'DB Reverse Lunge',sets:3,reps:10},
+      {name:'DB Shoulder Press',sets:3,reps:10},
+      {name:'DB Bent-Over Row',sets:3,reps:12},
+      {name:'DB Lateral Raise',sets:3,reps:12},
+      {name:'DB Overhead Tricep Extension',sets:3,reps:12}
+    ]},
+    { name: 'Active Burn', suggestedCategory: 'Aerobic', exercises: [
+      {name:'Treadmill Sprint',sets:6,reps:0},
+      {name:'DB Thrusters',sets:3,reps:12},
+      {name:'DB Jump Squat',sets:3,reps:10},
+      {name:'Band Monster Walk',sets:3,reps:15},
+      {name:'DB Farmer Carry',sets:3,reps:0}
+    ]}
+  ]
+};
+
 // ─── STORAGE HELPERS ──────────────────────────────────────
 // ─── FIREBASE ─────────────────────────────────────────────
 const firebaseConfig = {
@@ -1580,7 +1615,7 @@ async function addUser() {
   const userData = {name, admin: false};
   users[id] = userData;
   // Pre-load plan if it matches a known athlete
-  const knownPlans = {mckenna: MCKENNA_PLAN};
+  const knownPlans = {mckenna: MCKENNA_PLAN, melissa: MELISSA_PLAN};
   const nameKey = name.toLowerCase().split(' ')[0];
   plans[id] = knownPlans[nameKey] ? JSON.parse(JSON.stringify(knownPlans[nameKey])) : {days:[]};
   await persist();
