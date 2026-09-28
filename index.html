@@ -472,6 +472,7 @@ html,body{height:100%;background:var(--navy);color:var(--white);font-family:'Int
         <option value="Arms">Arms</option>
         <option value="Core">Core</option>
         <option value="Aerobic">Aerobic</option>
+        <option value="Mobility">Mobility & Stretching</option>
       </select>
       <button class="btn btn-primary btn-sm" onclick="createAndAddExercise()" style="width:100%">Create & Add</button>
     </div>
@@ -531,7 +532,7 @@ const EXERCISE_LIBRARY_DEFAULT = {
     {name:'DB Lateral Lunge'},{name:'DB Jump Squat'},{name:'DB Bulgarian Split Squat'},
     {name:'Isometric Wall Sit'},{name:'Isometric Split Squat Hold'},{name:'Isometric Glute Bridge Hold'},
     {name:'Calf Raise + ISO Hold'},{name:'Single-Leg Calf Raise + ISO Hold'},
-    {name:'Nordic Hamstring Curl'},{name:'Box Jump / Broad Jump'},{name:'Broad Jump'},
+    {name:'Nordic Hamstring Curl'},{name:'Box Jump'},{name:'Broad Jump'},
     {name:'Band Monster Walk'},{name:'DB Lateral Walk'}
   ],
   Chest: [
@@ -540,7 +541,7 @@ const EXERCISE_LIBRARY_DEFAULT = {
   ],
   Back: [
     {name:'DB Row (each side)'},{name:'DB Bent-Over Row'},{name:'Band Pull-Apart'},
-    {name:'Band Pull-Aparts'},{name:'DB Farmer Carry'},{name:'DB Deadlift'}
+    {name:'DB Deadlift'}
   ],
   Shoulders: [
     {name:'DB Shoulder Press'},{name:'DB Lateral Raise'},{name:'DB Front Raise'},
@@ -558,9 +559,13 @@ const EXERCISE_LIBRARY_DEFAULT = {
   Aerobic: [
     {name:'50-Yard Hill Run',aerobic:true},{name:'10-Yard Hill Sprint',aerobic:true},
     {name:'Treadmill Sprint',aerobic:true},{name:'Incline Treadmill Walk',aerobic:true},
-    {name:'Treadmill Walk (Zone 2)',aerobic:true},{name:'Jump Rope',aerobic:true},
+    {name:'Treadmill Walk (Zone 2)',aerobic:true},{name:'Jump Rope',aerobic:true}
+  ],
+  Mobility: [
     {name:'Band Shoulder Mobility',aerobic:true},{name:'Hip Flexor Stretch',aerobic:true},
-    {name:'Hamstring Stretch',aerobic:true}
+    {name:'Hamstring Stretch',aerobic:true},{name:'Quad Stretch',aerobic:true},
+    {name:'Chest Opener Stretch',aerobic:true},{name:'90/90 Hip Stretch',aerobic:true},
+    {name:'Thoracic Spine Rotation',aerobic:true},{name:'Cat-Cow',aerobic:true}
   ]
 };
 
@@ -572,7 +577,8 @@ const CAT_META = {
   Shoulders: {color:'#FF8C00', bg:'rgba(255,140,0,.15)',  icon:'🏔️'},
   Arms:      {color:'#FFC400', bg:'rgba(255,196,0,.15)',  icon:'💪'},
   Core:      {color:'#FF4C4C', bg:'rgba(255,76,76,.15)',  icon:'🎯'},
-  Aerobic:   {color:'#00CED1', bg:'rgba(0,206,209,.15)',  icon:'🏃'}
+  Aerobic:   {color:'#00CED1', bg:'rgba(0,206,209,.15)',  icon:'🏃'},
+  Mobility:  {color:'#7ED321', bg:'rgba(126,211,33,.15)', icon:'🧘'}
 };
 
 // Returns combined library (default + user custom)
@@ -900,21 +906,27 @@ function renderSets(ei) {
   // Headers
   const headers = document.createElement('div');
   if (aerobic) {
-    headers.style.cssText = 'display:grid;grid-template-columns:38px 1fr 32px;gap:6px;margin-bottom:4px;padding:0 0 4px;border-bottom:1px solid var(--border)';
-    headers.innerHTML = `<div style="font-size:10px;color:var(--slate);text-align:center">Set</div><div style="font-size:10px;color:var(--slate);text-align:center">Reps</div><div></div>`;
+    headers.style.cssText = 'display:grid;grid-template-columns:38px 1fr 32px 24px;gap:6px;margin-bottom:4px;padding:0 0 4px;border-bottom:1px solid var(--border)';
+    headers.innerHTML = `<div style="font-size:10px;color:var(--slate);text-align:center">Set</div><div style="font-size:10px;color:var(--slate);text-align:center">Reps</div><div></div><div></div>`;
   } else {
-    headers.style.cssText = 'display:grid;grid-template-columns:38px 1fr 14px 1fr 32px;gap:6px;margin-bottom:4px;padding:0 0 4px;border-bottom:1px solid var(--border)';
-    headers.innerHTML = `<div style="font-size:10px;color:var(--slate);text-align:center">Set</div><div style="font-size:10px;color:var(--slate);text-align:center">Weight</div><div></div><div style="font-size:10px;color:var(--slate);text-align:center">Reps</div><div></div>`;
+    headers.style.cssText = 'display:grid;grid-template-columns:38px 1fr 14px 1fr 32px 24px;gap:6px;margin-bottom:4px;padding:0 0 4px;border-bottom:1px solid var(--border)';
+    headers.innerHTML = `<div style="font-size:10px;color:var(--slate);text-align:center">Set</div><div style="font-size:10px;color:var(--slate);text-align:center">Weight</div><div></div><div style="font-size:10px;color:var(--slate);text-align:center">Reps</div><div></div><div></div>`;
   }
   container.appendChild(headers);
-  (logSetData[ei] || []).forEach((s, si) => {
+  const sets = logSetData[ei] || [];
+  sets.forEach((s, si) => {
     const row = document.createElement('div');
+    const canDelete = sets.length > 1;
+    const deleteBtn = canDelete
+      ? `<button onclick="deleteSet(${ei},${si})" style="background:none;border:none;color:var(--slate);font-size:16px;cursor:pointer;padding:0;line-height:1;opacity:.6" title="Remove set">×</button>`
+      : `<div></div>`;
     if (aerobic) {
-      row.className = 'set-row-aerobic';
-      row.innerHTML = `<div class="set-label">${si+1}</div><input class="set-input" type="number" inputmode="numeric" placeholder="reps" value="${s.reps}" onchange="logSetData[${ei}][${si}].reps=this.value"><div class="set-check ${s.done?'done':''}" onclick="toggleSetDone(${ei},${si})"><svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2 6L5 9L10 3" stroke="white" stroke-width="1.8" stroke-linecap="round"/></svg></div>`;
+      row.style.cssText = 'display:grid;grid-template-columns:38px 1fr 32px 24px;gap:6px;align-items:center;margin-bottom:8px';
+      row.innerHTML = `<div class="set-label">${si+1}</div><input class="set-input" type="number" inputmode="numeric" placeholder="reps" value="${s.reps}" onchange="logSetData[${ei}][${si}].reps=this.value"><div class="set-check ${s.done?'done':''}" onclick="toggleSetDone(${ei},${si})"><svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2 6L5 9L10 3" stroke="white" stroke-width="1.8" stroke-linecap="round"/></svg></div>${deleteBtn}`;
     } else {
       row.className = 'set-row';
-      row.innerHTML = `<div class="set-label">${si+1}</div><input class="set-input" type="number" inputmode="decimal" placeholder="lbs" value="${s.weight}" onchange="logSetData[${ei}][${si}].weight=this.value"><div class="set-x">×</div><input class="set-input" type="number" inputmode="numeric" placeholder="reps" value="${s.reps}" onchange="logSetData[${ei}][${si}].reps=this.value"><div class="set-check ${s.done?'done':''}" onclick="toggleSetDone(${ei},${si})"><svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2 6L5 9L10 3" stroke="white" stroke-width="1.8" stroke-linecap="round"/></svg></div>`;
+      row.style.gridTemplateColumns = '38px 1fr 14px 1fr 32px 24px';
+      row.innerHTML = `<div class="set-label">${si+1}</div><input class="set-input" type="number" inputmode="decimal" placeholder="lbs" value="${s.weight}" onchange="logSetData[${ei}][${si}].weight=this.value"><div class="set-x">×</div><input class="set-input" type="number" inputmode="numeric" placeholder="reps" value="${s.reps}" onchange="logSetData[${ei}][${si}].reps=this.value"><div class="set-check ${s.done?'done':''}" onclick="toggleSetDone(${ei},${si})"><svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2 6L5 9L10 3" stroke="white" stroke-width="1.8" stroke-linecap="round"/></svg></div>${deleteBtn}`;
     }
     container.appendChild(row);
   });
@@ -922,6 +934,7 @@ function renderSets(ei) {
 
 function addSet(ei) { if (!logSetData[ei]) logSetData[ei]=[]; logSetData[ei].push({weight:'',reps:'',done:false}); renderSets(ei); }
 function toggleSetDone(ei, si) { logSetData[ei][si].done = !logSetData[ei][si].done; renderSets(ei); }
+function deleteSet(ei, si) { if (!logSetData[ei] || logSetData[ei].length <= 1) return; logSetData[ei].splice(si, 1); renderSets(ei); }
 
 // ─── EXERCISE PICKER ──────────────────────────────────────
 function openExercisePicker() {
