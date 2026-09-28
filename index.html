@@ -140,6 +140,18 @@ html,body{height:100%;background:var(--navy);color:var(--white);font-family:'Int
 .empty-title{font-family:'Barlow Condensed',sans-serif;font-size:22px;font-weight:700;color:var(--white);margin-bottom:8px}
 .toast{position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:var(--green);color:#fff;padding:10px 20px;border-radius:20px;font-size:13px;font-weight:600;z-index:200;opacity:0;transition:opacity .3s;pointer-events:none;white-space:nowrap}
 .toast.show{opacity:1}
+.cat-pill{display:inline-flex;align-items:center;gap:4px;padding:5px 10px;border-radius:20px;font-size:11px;font-weight:600;background:var(--blue-dim);color:var(--blue);border:1px solid var(--blue-border);margin-bottom:10px}
+.ex-library-cat{margin-bottom:12px}
+.ex-library-cat-title{font-size:11px;font-weight:700;color:var(--slate);letter-spacing:.8px;text-transform:uppercase;margin-bottom:8px;display:flex;align-items:center;gap:6px}
+.ex-library-list{display:flex;flex-direction:column;gap:4px}
+.ex-pick-item{display:flex;align-items:center;justify-content:space-between;padding:10px 12px;border-radius:10px;background:var(--navy);border:1px solid var(--border);cursor:pointer;transition:border-color .15s}
+.ex-pick-item:active{border-color:var(--blue);background:var(--blue-dim)}
+.ex-pick-name{font-size:14px;font-weight:500}
+.ex-pick-badge{font-size:10px;color:var(--slate);background:rgba(139,163,199,.1);padding:2px 7px;border-radius:10px}
+.added-exercises-list{margin-bottom:4px}
+.add-ex-btn{width:100%;padding:12px;border-radius:10px;border:1.5px dashed var(--blue-border);background:var(--blue-dim);color:var(--blue);font-family:'Inter',sans-serif;font-weight:600;font-size:14px;cursor:pointer;margin-bottom:4px}
+.day-focus-tag{display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:14px;font-size:11px;font-weight:600;margin-bottom:12px}
+.set-row-aerobic{display:grid;grid-template-columns:38px 1fr 32px;gap:6px;align-items:center;margin-bottom:8px}
 </style>
 </head>
 <body>
@@ -212,8 +224,10 @@ html,body{height:100%;background:var(--navy);color:var(--white);font-family:'Int
     <div id="gym-section">
       <div class="section-label">Select Day</div>
       <div class="day-row" id="log-day-row"></div>
+      <div id="day-focus-area"></div>
       <div class="section-label">Exercises</div>
-      <div class="card" id="log-exercises"></div>
+      <div id="log-exercises-added" class="added-exercises-list"></div>
+      <button class="add-ex-btn" onclick="openExercisePicker()">+ Add Exercise</button>
     </div>
 
     <!-- NON-GYM SECTION -->
@@ -435,6 +449,35 @@ html,body{height:100%;background:var(--navy);color:var(--white);font-family:'Int
   </div>
 </div>
 
+<!-- EXERCISE PICKER MODAL -->
+<div class="modal-overlay hidden" id="modal-exercise-picker">
+  <div class="modal" style="padding-bottom:60px">
+    <div class="modal-handle"></div>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+      <div class="modal-title" style="margin-bottom:0">Add Exercise</div>
+      <button onclick="closeModal('modal-exercise-picker')" style="background:none;border:none;color:var(--slate);font-size:22px;cursor:pointer;padding:4px">×</button>
+    </div>
+    <input class="text-input" id="ex-search" placeholder="Search exercises..." oninput="renderExercisePicker()" style="margin-bottom:14px">
+    <div id="picker-suggested-note" style="display:none;margin-bottom:10px"></div>
+    <div id="ex-picker-list"></div>
+    <div style="border-top:1px solid var(--border);margin-top:16px;padding-top:16px">
+      <div style="font-weight:600;font-size:14px;margin-bottom:10px">✏️ Create New Exercise</div>
+      <input class="text-input" id="new-ex-name" placeholder="Exercise name" style="margin-bottom:8px">
+      <select class="select-input" id="new-ex-cat" style="margin-bottom:8px">
+        <option value="">Select category...</option>
+        <option value="Legs">Legs</option>
+        <option value="Chest">Chest</option>
+        <option value="Back">Back</option>
+        <option value="Shoulders">Shoulders</option>
+        <option value="Arms">Arms</option>
+        <option value="Core">Core</option>
+        <option value="Aerobic">Aerobic</option>
+      </select>
+      <button class="btn btn-primary btn-sm" onclick="createAndAddExercise()" style="width:100%">Create & Add</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal-overlay hidden" id="modal-export">
   <div class="modal">
     <div class="modal-handle"></div>
@@ -477,28 +520,114 @@ let progressViewUser = null;
 let planEditorUser = null;
 let planEditorDayIndex = 0;
 let logSetData = {}; // exerciseIndex -> [{weight,reps,done}]
+let logExercises = []; // [{name, category, aerobic}] — exercises added this session
 let editingSessionId = null;
 let editSetData = {};
 
+// ─── EXERCISE LIBRARY ─────────────────────────────────────
+const EXERCISE_LIBRARY_DEFAULT = {
+  Legs: [
+    {name:'DB Goblet Squat'},{name:'DB Romanian Deadlift'},{name:'DB Reverse Lunge'},
+    {name:'DB Lateral Lunge'},{name:'DB Jump Squat'},{name:'DB Bulgarian Split Squat'},
+    {name:'Isometric Wall Sit'},{name:'Isometric Split Squat Hold'},{name:'Isometric Glute Bridge Hold'},
+    {name:'Calf Raise + ISO Hold'},{name:'Single-Leg Calf Raise + ISO Hold'},
+    {name:'Nordic Hamstring Curl'},{name:'Box Jump / Broad Jump'},{name:'Broad Jump'},
+    {name:'Band Monster Walk'},{name:'DB Lateral Walk'}
+  ],
+  Chest: [
+    {name:'DB Bench Press'},{name:'DB Floor Press'},{name:'DB Incline Press'},
+    {name:'DB Fly'},{name:'Push-Up'}
+  ],
+  Back: [
+    {name:'DB Row (each side)'},{name:'DB Bent-Over Row'},{name:'Band Pull-Apart'},
+    {name:'Band Pull-Aparts'},{name:'DB Farmer Carry'},{name:'DB Deadlift'}
+  ],
+  Shoulders: [
+    {name:'DB Shoulder Press'},{name:'DB Lateral Raise'},{name:'DB Front Raise'},
+    {name:'Band Pull-Apart'},{name:'Band Face Pull'}
+  ],
+  Arms: [
+    {name:'DB Bicep Curl'},{name:'DB Hammer Curl'},{name:'Tricep Kickback'},
+    {name:'DB Overhead Tricep Extension'},{name:'Band Bicep Curl'}
+  ],
+  Core: [
+    {name:'Plank Hold'},{name:'Dead Bug'},{name:'Hollow Body Hold'},
+    {name:'Pallof Press'},{name:'Bird Dog'},{name:'DB Thrusters'},
+    {name:'Band Lateral Walk'},{name:'DB Farmer Carry'}
+  ],
+  Aerobic: [
+    {name:'50-Yard Hill Run',aerobic:true},{name:'10-Yard Hill Sprint',aerobic:true},
+    {name:'Treadmill Sprint',aerobic:true},{name:'Incline Treadmill Walk',aerobic:true},
+    {name:'Treadmill Walk (Zone 2)',aerobic:true},{name:'Jump Rope',aerobic:true},
+    {name:'Band Shoulder Mobility',aerobic:true},{name:'Hip Flexor Stretch',aerobic:true},
+    {name:'Hamstring Stretch',aerobic:true}
+  ]
+};
+
+// Category colors and icons
+const CAT_META = {
+  Legs:      {color:'#1DB954', bg:'rgba(29,185,84,.15)',  icon:'🦵'},
+  Chest:     {color:'#1E90FF', bg:'rgba(30,144,255,.15)', icon:'💪'},
+  Back:      {color:'#9B59B6', bg:'rgba(155,89,182,.15)', icon:'🔙'},
+  Shoulders: {color:'#FF8C00', bg:'rgba(255,140,0,.15)',  icon:'🏔️'},
+  Arms:      {color:'#FFC400', bg:'rgba(255,196,0,.15)',  icon:'💪'},
+  Core:      {color:'#FF4C4C', bg:'rgba(255,76,76,.15)',  icon:'🎯'},
+  Aerobic:   {color:'#00CED1', bg:'rgba(0,206,209,.15)',  icon:'🏃'}
+};
+
+// Returns combined library (default + user custom)
+function getExerciseLibrary() {
+  const custom = LS.get('rwt_custom_exercises', {});
+  const lib = {};
+  Object.keys(EXERCISE_LIBRARY_DEFAULT).forEach(cat => {
+    lib[cat] = [...EXERCISE_LIBRARY_DEFAULT[cat]];
+  });
+  Object.entries(custom).forEach(([cat, exes]) => {
+    if (!lib[cat]) lib[cat] = [];
+    exes.forEach(ex => {
+      if (!lib[cat].find(e => e.name === ex.name)) lib[cat].push(ex);
+    });
+  });
+  return lib;
+}
+
+function saveCustomExercise(name, category) {
+  const custom = LS.get('rwt_custom_exercises', {});
+  if (!custom[category]) custom[category] = [];
+  if (!custom[category].find(e => e.name === name)) {
+    custom[category].push({name, aerobic: category === 'Aerobic'});
+    LS.set('rwt_custom_exercises', custom);
+  }
+}
+
+function isAerobic(exName) {
+  const lib = getExerciseLibrary();
+  for (const exes of Object.values(lib)) {
+    const ex = exes.find(e => e.name === exName);
+    if (ex) return !!ex.aerobic;
+  }
+  return false;
+}
+
 const AUSTIN_PLAN = {
   days: [
-    { name: 'Upper Body', exercises: [
+    { name: 'Upper Body', suggestedCategory: 'Chest', exercises: [
       {name:'DB Bench Press',sets:3,reps:12},{name:'DB Row (each side)',sets:3,reps:12},
       {name:'DB Shoulder Press',sets:3,reps:12},{name:'Band Pull-Aparts',sets:3,reps:15},
       {name:'DB Bicep Curl',sets:3,reps:12},{name:'Tricep Kickback',sets:3,reps:12},
       {name:'Incline Treadmill Walk',sets:1,reps:0}
     ]},
-    { name: 'Lower Body', exercises: [
+    { name: 'Lower Body', suggestedCategory: 'Legs', exercises: [
       {name:'DB Goblet Squat',sets:4,reps:12},{name:'DB Romanian Deadlift',sets:3,reps:12},
       {name:'DB Reverse Lunge',sets:3,reps:10},{name:'DB Lateral Lunge',sets:2,reps:10},
       {name:'Isometric Wall Sit',sets:3,reps:0},{name:'Plank Hold',sets:3,reps:0},{name:'Dead Bug',sets:3,reps:10}
     ]},
-    { name: 'Full Body Circuit', exercises: [
+    { name: 'Full Body Circuit', suggestedCategory: 'Core', exercises: [
       {name:'DB Thrusters',sets:4,reps:12},{name:'Band Lateral Walk',sets:4,reps:20},
       {name:'DB Floor Press',sets:4,reps:12},{name:'Treadmill Sprint',sets:4,reps:0},
       {name:'DB Farmer Carry',sets:4,reps:0},{name:'Hollow Body Hold',sets:4,reps:0}
     ]},
-    { name: 'Active Recovery', exercises: [
+    { name: 'Active Recovery', suggestedCategory: 'Aerobic', exercises: [
       {name:'Treadmill Walk (Zone 2)',sets:1,reps:0},{name:'Band Shoulder Mobility',sets:1,reps:0},
       {name:'Hip Flexor Stretch',sets:1,reps:0},{name:'Hamstring Stretch',sets:1,reps:0}
     ]}
@@ -507,18 +636,18 @@ const AUSTIN_PLAN = {
 
 const CARTER_PLAN = {
   days: [
-    { name: 'Lower Body Power', exercises: [
+    { name: 'Lower Body Power', suggestedCategory: 'Legs', exercises: [
       {name:'10-Yard Hill Sprint',sets:8,reps:0},{name:'DB Jump Squat',sets:3,reps:8},
       {name:'Isometric Wall Sit',sets:3,reps:0},{name:'DB Romanian Deadlift',sets:3,reps:10},
       {name:'Isometric Split Squat Hold',sets:3,reps:0},{name:'Calf Raise + ISO Hold',sets:3,reps:10},
       {name:'Nordic Hamstring Curl',sets:3,reps:8}
     ]},
-    { name: 'Upper Body & Core', exercises: [
+    { name: 'Upper Body & Core', suggestedCategory: 'Chest', exercises: [
       {name:'DB Bench Press',sets:3,reps:10},{name:'DB Bent-Over Row',sets:3,reps:10},
       {name:'DB Shoulder Press',sets:3,reps:10},{name:'Band Pull-Apart',sets:3,reps:15},
       {name:'Plank Hold',sets:3,reps:0},{name:'Dead Bug',sets:3,reps:10},{name:'Pallof Press',sets:3,reps:10}
     ]},
-    { name: 'Athletic Development', exercises: [
+    { name: 'Athletic Development', suggestedCategory: 'Aerobic', exercises: [
       {name:'50-Yard Hill Run',sets:5,reps:0},{name:'DB Goblet Squat',sets:3,reps:12},
       {name:'Broad Jump',sets:4,reps:5},{name:'Isometric Glute Bridge Hold',sets:3,reps:0},
       {name:'DB Lateral Lunge',sets:3,reps:10},{name:'Band Monster Walk',sets:3,reps:20},
@@ -529,7 +658,7 @@ const CARTER_PLAN = {
 
 const MCKENNA_PLAN = {
   days: [
-    { name: 'Lower Body Power', exercises: [
+    { name: 'Lower Body Power', suggestedCategory: 'Legs', exercises: [
       {name:'Box Jump / Broad Jump',sets:4,reps:5},
       {name:'DB Goblet Squat',sets:4,reps:10},
       {name:'DB Romanian Deadlift',sets:3,reps:10},
@@ -538,7 +667,7 @@ const MCKENNA_PLAN = {
       {name:'Isometric Glute Bridge Hold',sets:3,reps:0},
       {name:'Nordic Hamstring Curl',sets:3,reps:6}
     ]},
-    { name: 'Full Body + Core', exercises: [
+    { name: 'Full Body + Core', suggestedCategory: 'Core', exercises: [
       {name:'DB Shoulder Press',sets:3,reps:10},
       {name:'DB Bent-Over Row',sets:3,reps:10},
       {name:'DB Lateral Lunge',sets:3,reps:10},
@@ -548,7 +677,7 @@ const MCKENNA_PLAN = {
       {name:'Pallof Press',sets:3,reps:10},
       {name:'Bird Dog',sets:3,reps:10}
     ]},
-    { name: 'Optional Add-On', exercises: [
+    { name: 'Optional Add-On', suggestedCategory: 'Legs', exercises: [
       {name:'Broad Jump',sets:3,reps:5},
       {name:'Isometric Split Squat Hold',sets:3,reps:0},
       {name:'Dead Bug',sets:2,reps:10},
@@ -691,48 +820,187 @@ function renderLogScreen() {
     const chip = document.createElement('div');
     chip.className = 'day-chip' + (i === currentLogDayIndex ? ' active' : '');
     chip.innerHTML = `<div class="day-chip-num">${i+1}</div><div class="day-chip-label">${day.name}</div>`;
-    chip.onclick = () => { currentLogDayIndex = i; renderLogExercises(); document.querySelectorAll('.day-chip').forEach((c,ci) => c.classList.toggle('active', ci===i)); };
+    chip.onclick = () => {
+      currentLogDayIndex = i;
+      logExercises = [];
+      logSetData = {};
+      document.querySelectorAll('.day-chip').forEach((c,ci) => c.classList.toggle('active', ci===i));
+      renderDayFocus();
+      renderLogExercisesAdded();
+    };
     dayRow.appendChild(chip);
   });
-  renderLogExercises();
+  renderDayFocus();
+  renderLogExercisesAdded();
 }
 
-function renderLogExercises() {
+function renderDayFocus() {
   const plan = plans[currentUser] || {days:[]};
   const day = plan.days[currentLogDayIndex];
-  const container = document.getElementById('log-exercises');
-  if (!day) { container.innerHTML = '<div style="padding:16px;color:var(--slate);font-size:13px">No exercises — add some in Settings → Edit My Plan</div>'; return; }
-  logSetData = {};
+  const area = document.getElementById('day-focus-area');
+  if (!day) { area.innerHTML = ''; return; }
+  const cat = day.suggestedCategory || '';
+  const meta = CAT_META[cat];
+  if (!meta) { area.innerHTML = ''; return; }
+  area.innerHTML = `<div style="margin-bottom:4px"><span class="day-focus-tag" style="background:${meta.bg};color:${meta.color};border:1px solid ${meta.color}40">${meta.icon} Suggested Focus: ${cat}</span></div><div style="font-size:11px;color:var(--slate);margin-bottom:8px">Pick any exercises below — the library opens to this category</div>`;
+}
+
+function renderLogExercisesAdded() {
+  const container = document.getElementById('log-exercises-added');
   container.innerHTML = '';
-  day.exercises.forEach((ex, ei) => {
-    logSetData[ei] = Array.from({length: ex.sets||1}, () => ({weight:'',reps:'',done:false}));
+  if (logExercises.length === 0) {
+    container.innerHTML = '<div style="text-align:center;padding:16px;color:var(--slate);font-size:13px">No exercises added yet — tap Add Exercise to begin</div>';
+    return;
+  }
+  logExercises.forEach((ex, ei) => {
     const div = document.createElement('div');
-    div.className = 'exercise-item';
-    div.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center"><div class="exercise-name">${ex.name}</div>${ex.reps?`<span class="badge badge-slate">Target: ${ex.sets}×${ex.reps}</span>`:''}</div><div id="sets-${ei}"></div><button onclick="addSet(${ei})" style="background:none;border:1px dashed var(--border);color:var(--slate);border-radius:8px;padding:6px 12px;font-size:12px;cursor:pointer;margin-top:4px;width:100%">+ Add Set</button>`;
+    div.className = 'card exercise-item';
+    div.style.marginBottom = '10px';
+    const meta = CAT_META[ex.category] || {};
+    const catBadgeStyle = ex.category && meta.color ? `background:${meta.bg};color:${meta.color}` : 'background:rgba(139,163,199,.1);color:var(--slate)';
+    const ytQuery = encodeURIComponent(ex.name + ' exercise form how to');
+    const ytUrl = `https://www.youtube.com/results?search_query=${ytQuery}`;
+    div.innerHTML = `
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <div style="flex:1;min-width:0">
+          <div style="display:flex;align-items:center;gap:6px;margin-bottom:3px">
+            <div class="exercise-name" style="margin-bottom:0">${ex.name}</div>
+            <a href="${ytUrl}" target="_blank" rel="noopener" style="flex-shrink:0;text-decoration:none;font-size:15px;line-height:1" title="Watch on YouTube">📹</a>
+          </div>
+          ${ex.category ? `<span class="badge" style="${catBadgeStyle}">${meta.icon||''} ${ex.category}${ex.aerobic?' · Aerobic':''}</span>` : ''}
+        </div>
+        <button onclick="removeLogExercise(${ei})" style="background:none;border:none;color:var(--slate);font-size:20px;cursor:pointer;padding:4px 8px;flex-shrink:0">×</button>
+      </div>
+      <div id="sets-${ei}"></div>
+      <button onclick="addSet(${ei})" style="background:none;border:1px dashed var(--border);color:var(--slate);border-radius:8px;padding:6px 12px;font-size:12px;cursor:pointer;margin-top:4px;width:100%">+ Add Set</button>
+    `;
     container.appendChild(div);
+    if (!logSetData[ei]) logSetData[ei] = [{weight:'',reps:'',done:false}];
     renderSets(ei);
   });
+}
+
+function removeLogExercise(ei) {
+  logExercises.splice(ei, 1);
+  // Rebuild logSetData with shifted indices
+  const newSetData = {};
+  logExercises.forEach((_, i) => {
+    newSetData[i] = logSetData[i < ei ? i : i + 1] || [{weight:'',reps:'',done:false}];
+  });
+  logSetData = newSetData;
+  renderLogExercisesAdded();
 }
 
 function renderSets(ei) {
   const container = document.getElementById(`sets-${ei}`);
   if (!container) return;
   container.innerHTML = '';
-  // Column headers (only once, before first set)
+  const ex = logExercises[ei];
+  const aerobic = ex && ex.aerobic;
+  // Headers
   const headers = document.createElement('div');
-  headers.style.cssText = 'display:grid;grid-template-columns:38px 1fr 14px 1fr 32px;gap:6px;margin-bottom:4px;padding:0 0 4px;border-bottom:1px solid var(--border)';
-  headers.innerHTML = `<div style="font-size:10px;color:var(--slate);text-align:center">Set</div><div style="font-size:10px;color:var(--slate);text-align:center">Weight</div><div></div><div style="font-size:10px;color:var(--slate);text-align:center">Reps</div><div></div>`;
+  if (aerobic) {
+    headers.style.cssText = 'display:grid;grid-template-columns:38px 1fr 32px;gap:6px;margin-bottom:4px;padding:0 0 4px;border-bottom:1px solid var(--border)';
+    headers.innerHTML = `<div style="font-size:10px;color:var(--slate);text-align:center">Set</div><div style="font-size:10px;color:var(--slate);text-align:center">Reps</div><div></div>`;
+  } else {
+    headers.style.cssText = 'display:grid;grid-template-columns:38px 1fr 14px 1fr 32px;gap:6px;margin-bottom:4px;padding:0 0 4px;border-bottom:1px solid var(--border)';
+    headers.innerHTML = `<div style="font-size:10px;color:var(--slate);text-align:center">Set</div><div style="font-size:10px;color:var(--slate);text-align:center">Weight</div><div></div><div style="font-size:10px;color:var(--slate);text-align:center">Reps</div><div></div>`;
+  }
   container.appendChild(headers);
   (logSetData[ei] || []).forEach((s, si) => {
     const row = document.createElement('div');
-    row.className = 'set-row';
-    row.innerHTML = `<div class="set-label">${si+1}</div><input class="set-input" type="number" inputmode="decimal" placeholder="lbs" value="${s.weight}" onchange="logSetData[${ei}][${si}].weight=this.value"><div class="set-x">×</div><input class="set-input" type="number" inputmode="numeric" placeholder="reps" value="${s.reps}" onchange="logSetData[${ei}][${si}].reps=this.value"><div class="set-check ${s.done?'done':''}" onclick="toggleSetDone(${ei},${si})"><svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2 6L5 9L10 3" stroke="white" stroke-width="1.8" stroke-linecap="round"/></svg></div>`;
+    if (aerobic) {
+      row.className = 'set-row-aerobic';
+      row.innerHTML = `<div class="set-label">${si+1}</div><input class="set-input" type="number" inputmode="numeric" placeholder="reps" value="${s.reps}" onchange="logSetData[${ei}][${si}].reps=this.value"><div class="set-check ${s.done?'done':''}" onclick="toggleSetDone(${ei},${si})"><svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2 6L5 9L10 3" stroke="white" stroke-width="1.8" stroke-linecap="round"/></svg></div>`;
+    } else {
+      row.className = 'set-row';
+      row.innerHTML = `<div class="set-label">${si+1}</div><input class="set-input" type="number" inputmode="decimal" placeholder="lbs" value="${s.weight}" onchange="logSetData[${ei}][${si}].weight=this.value"><div class="set-x">×</div><input class="set-input" type="number" inputmode="numeric" placeholder="reps" value="${s.reps}" onchange="logSetData[${ei}][${si}].reps=this.value"><div class="set-check ${s.done?'done':''}" onclick="toggleSetDone(${ei},${si})"><svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2 6L5 9L10 3" stroke="white" stroke-width="1.8" stroke-linecap="round"/></svg></div>`;
+    }
     container.appendChild(row);
   });
 }
 
-function addSet(ei) { logSetData[ei].push({weight:'',reps:'',done:false}); renderSets(ei); }
+function addSet(ei) { if (!logSetData[ei]) logSetData[ei]=[]; logSetData[ei].push({weight:'',reps:'',done:false}); renderSets(ei); }
 function toggleSetDone(ei, si) { logSetData[ei][si].done = !logSetData[ei][si].done; renderSets(ei); }
+
+// ─── EXERCISE PICKER ──────────────────────────────────────
+function openExercisePicker() {
+  document.getElementById('ex-search').value = '';
+  renderExercisePicker();
+  openModal('modal-exercise-picker');
+}
+
+function renderExercisePicker() {
+  const query = (document.getElementById('ex-search')?.value || '').toLowerCase().trim();
+  const plan = plans[currentUser] || {days:[]};
+  const day = plan.days[currentLogDayIndex];
+  const suggested = day?.suggestedCategory || '';
+  const lib = getExerciseLibrary();
+  const note = document.getElementById('picker-suggested-note');
+  if (suggested && CAT_META[suggested] && !query) {
+    const meta = CAT_META[suggested];
+    note.style.display = '';
+    note.innerHTML = `<div style="display:flex;align-items:center;gap:6px;font-size:12px;color:${meta.color}"><span>${meta.icon}</span><span>Showing <b>${suggested}</b> first — suggested for ${day.name}</span></div>`;
+  } else {
+    note.style.display = 'none';
+  }
+  const list = document.getElementById('ex-picker-list');
+  list.innerHTML = '';
+  // Order categories: suggested first
+  let catOrder = Object.keys(lib);
+  if (suggested && catOrder.includes(suggested)) {
+    catOrder = [suggested, ...catOrder.filter(c => c !== suggested)];
+  }
+  let anyShown = false;
+  catOrder.forEach(cat => {
+    const meta = CAT_META[cat] || {};
+    const exercises = lib[cat] || [];
+    const filtered = query ? exercises.filter(e => e.name.toLowerCase().includes(query)) : exercises;
+    if (filtered.length === 0) return;
+    anyShown = true;
+    const section = document.createElement('div');
+    section.className = 'ex-library-cat';
+    section.innerHTML = `<div class="ex-library-cat-title"><span style="color:${meta.color||'var(--slate)'}">${meta.icon||''} ${cat}</span></div><div class="ex-library-list" id="excat-${cat}"></div>`;
+    list.appendChild(section);
+    const catList = section.querySelector(`#excat-${cat}`);
+    filtered.forEach(ex => {
+      const item = document.createElement('div');
+      item.className = 'ex-pick-item';
+      item.innerHTML = `<span class="ex-pick-name">${ex.name}</span><span class="ex-pick-badge">${ex.aerobic ? 'Aerobic' : cat}</span>`;
+      item.onclick = () => addExerciseFromPicker(ex.name, cat, !!ex.aerobic);
+      catList.appendChild(item);
+    });
+  });
+  if (!anyShown) {
+    list.innerHTML = `<div style="text-align:center;color:var(--slate);font-size:13px;padding:16px">No exercises found — create one below</div>`;
+  }
+}
+
+function addExerciseFromPicker(name, category, aerobic) {
+  // Avoid duplicates
+  if (logExercises.find(e => e.name === name)) {
+    showToast('Already added!');
+    closeModal('modal-exercise-picker');
+    return;
+  }
+  logExercises.push({name, category, aerobic});
+  const ei = logExercises.length - 1;
+  logSetData[ei] = [{weight:'',reps:'',done:false}];
+  closeModal('modal-exercise-picker');
+  renderLogExercisesAdded();
+  showToast(`${name} added`);
+}
+
+function createAndAddExercise() {
+  const name = document.getElementById('new-ex-name').value.trim();
+  const cat = document.getElementById('new-ex-cat').value;
+  if (!name) { showToast('Enter a name'); return; }
+  if (!cat) { showToast('Select a category'); return; }
+  saveCustomExercise(name, cat);
+  addExerciseFromPicker(name, cat, cat === 'Aerobic');
+  document.getElementById('new-ex-name').value = '';
+  document.getElementById('new-ex-cat').value = '';
+}
 
 function selectSessionType(type) {
   currentSessionType = type;
@@ -752,9 +1020,12 @@ function saveSession() {
   if (currentSessionType === 'gym' && day) {
     sessionData.dayNum = currentLogDayIndex + 1;
     sessionData.dayName = day.name;
-    sessionData.exercises = day.exercises.map((ex, ei) => ({
+    sessionData.daySuggestedCategory = day.suggestedCategory || '';
+    sessionData.exercises = logExercises.map((ex, ei) => ({
       name: ex.name,
-      sets: (logSetData[ei] || []).filter(s => s.weight||s.reps).map(s => ({weight: parseFloat(s.weight)||0, reps: parseInt(s.reps)||0, done: s.done}))
+      category: ex.category || '',
+      aerobic: !!ex.aerobic,
+      sets: (logSetData[ei] || []).filter(s => s.weight||s.reps).map(s => ({weight: ex.aerobic ? 0 : (parseFloat(s.weight)||0), reps: parseInt(s.reps)||0, done: s.done}))
     })).filter(ex => ex.sets.length > 0);
   } else {
     sessionData.duration = parseInt(document.getElementById('log-duration').value) || 0;
@@ -768,6 +1039,8 @@ function saveSession() {
   persist();
   document.getElementById('log-notes').value = '';
   document.getElementById('log-other-label').value = '';
+  logExercises = [];
+  logSetData = {};
   showToast('Session saved! 💪');
   renderAll();
   showScreen('screen-home');
@@ -849,11 +1122,14 @@ function openDetail(sessionId) {
       const exDiv = document.createElement('div');
       exDiv.className = 'detail-exercise';
       const exVol = (ex.sets||[]).reduce((a,st) => a + (st.weight||0)*(st.reps||0), 0);
-      exDiv.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><div style="font-weight:600;font-size:14px">${ex.name}</div>${exVol>0?`<span style="font-size:11px;color:var(--slate)">${exVol.toLocaleString()} lbs</span>`:''}</div>`;
+      const catMeta = ex.category ? (CAT_META[ex.category]||{}) : {};
+      const catBadge = ex.category ? `<span class="badge" style="background:${catMeta.bg||'rgba(139,163,199,.1)'};color:${catMeta.color||'var(--slate)'};">${catMeta.icon||''} ${ex.category}</span>` : '';
+      exDiv.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px"><div><div style="font-weight:600;font-size:14px;margin-bottom:3px">${ex.name}</div>${catBadge}</div>${exVol>0?`<span style="font-size:11px;color:var(--slate)">${exVol.toLocaleString()} lbs</span>`:''}</div>`;
       (ex.sets||[]).forEach((st, si) => {
         const setRow = document.createElement('div');
         setRow.className = 'detail-set-row';
-        setRow.innerHTML = `<div class="detail-set-num">Set ${si+1}</div><div class="detail-set-val">${st.weight ? `${st.weight} lbs × ${st.reps} reps` : st.reps ? `${st.reps} reps` : '—'}</div>${st.done?'<div style="color:var(--green);font-size:12px">✓</div>':''}`;
+        const setVal = ex.aerobic ? (st.reps ? `${st.reps} reps` : '—') : (st.weight ? `${st.weight} lbs × ${st.reps} reps` : st.reps ? `${st.reps} reps` : '—');
+        setRow.innerHTML = `<div class="detail-set-num">Set ${si+1}</div><div class="detail-set-val">${setVal}</div>${st.done?'<div style="color:var(--green);font-size:12px">✓</div>':''}`;
         exDiv.appendChild(setRow);
       });
       exCard.appendChild(exDiv);
@@ -1219,8 +1495,12 @@ function exportAllData() {
       lines.push(`### ${d} — ${s.type === 'gym' ? `Day ${s.dayNum} ${s.dayName}` : s.type}`);
       if (s.type === 'gym' && s.exercises) {
         s.exercises.forEach(ex => {
-          lines.push(`  ${ex.name}:`);
-          (ex.sets||[]).forEach((st,si) => lines.push(`    Set ${si+1}: ${st.weight||0}lbs × ${st.reps||0} reps`));
+          const catLabel = ex.category ? ` [${ex.category}]` : '';
+          lines.push(`  ${ex.name}${catLabel}:`);
+          (ex.sets||[]).forEach((st,si) => {
+            if (ex.aerobic) lines.push(`    Set ${si+1}: ${st.reps||0} reps`);
+            else lines.push(`    Set ${si+1}: ${st.weight||0}lbs × ${st.reps||0} reps`);
+          });
         });
       } else {
         if (s.duration) lines.push(`  Duration: ${s.duration} min, Intensity: ${s.intensity}`);
@@ -1323,5 +1603,3 @@ init();
 </script>
 </body>
 </html>
-Index2.html
-Displaying Index2.html.
