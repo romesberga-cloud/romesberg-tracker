@@ -5,6 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Romesberg Workout Tracker</title>
 <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<!-- Firebase SDK -->
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
 <style>
 :root {
   --navy:#0A1628; --navy-mid:#0F2548; --navy-card:#142d5a;
@@ -513,6 +516,7 @@ let currentUser = null;
 let users = {};
 let sessions = {};
 let plans = {};
+let customExercises = {};
 let currentSessionType = 'gym';
 let currentLogDay = null;
 let currentLogDayIndex = 0;
@@ -583,12 +587,11 @@ const CAT_META = {
 
 // Returns combined library (default + user custom)
 function getExerciseLibrary() {
-  const custom = LS.get('rwt_custom_exercises', {});
   const lib = {};
   Object.keys(EXERCISE_LIBRARY_DEFAULT).forEach(cat => {
     lib[cat] = [...EXERCISE_LIBRARY_DEFAULT[cat]];
   });
-  Object.entries(custom).forEach(([cat, exes]) => {
+  Object.entries(customExercises).forEach(([cat, exes]) => {
     if (!lib[cat]) lib[cat] = [];
     exes.forEach(ex => {
       if (!lib[cat].find(e => e.name === ex.name)) lib[cat].push(ex);
@@ -597,12 +600,11 @@ function getExerciseLibrary() {
   return lib;
 }
 
-function saveCustomExercise(name, category) {
-  const custom = LS.get('rwt_custom_exercises', {});
-  if (!custom[category]) custom[category] = [];
-  if (!custom[category].find(e => e.name === name)) {
-    custom[category].push({name, aerobic: category === 'Aerobic'});
-    LS.set('rwt_custom_exercises', custom);
+async function saveCustomExercise(name, category) {
+  if (!customExercises[category]) customExercises[category] = [];
+  if (!customExercises[category].find(e => e.name === name)) {
+    customExercises[category].push({name, aerobic: category === 'Aerobic' || category === 'Mobility'});
+    await persistCustomExercises(customExercises);
   }
 }
 
@@ -693,36 +695,101 @@ const MCKENNA_PLAN = {
 };
 
 // ─── STORAGE HELPERS ──────────────────────────────────────
-const LS = {
-  get(key, fallback) { try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : fallback; } catch(e) { return fallback; } },
-  set(key, val) { try { localStorage.setItem(key, JSON.stringify(val)); } catch(e) {} }
+// ─── FIREBASE ─────────────────────────────────────────────
+const firebaseConfig = {
+  apiKey: "AIzaSyBXPj7vqHb9FQ9KYESdVtWZ8J0wLdOqcVc",
+  authDomain: "romesberg-tracker.firebaseapp.com",
+  projectId: "romesberg-tracker",
+  storageBucket: "romesberg-tracker.firebasestorage.app",
+  messagingSenderId: "741699592982",
+  appId: "1:741699592982:web:afffdd406fd5571d6ee637"
 };
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
 
-// ─── INIT ─────────────────────────────────────────────────
-function init() {
-  updateHomeDateLabel();
-  users = LS.get('rwt_users', null);
-  if (!users) {
-    users = { austin: {name:'Austin',admin:true}, carter: {name:'Carter',admin:false} };
-    LS.set('rwt_users', users);
+// Helper: show/hide loading overlay
+function showLoading(msg) {
+  let overlay = document.getElementById('fb-loading');
+  if (!overlay) {
+    overlay = document.createElement('div');
+    overlay.id = 'fb-loading';
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(10,22,40,0.92);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;gap:16px';
+    overlay.innerHTML = '<div style="width:48px;height:48px;border:4px solid rgba(30,144,255,0.3);border-top-color:#1E90FF;border-radius:50%;animation:spin 0.8s linear infinite"></div><div id="fb-loading-msg" style="color:#8BA3C7;font-size:14px;font-family:Inter,sans-serif"></div>';
+    if (!document.querySelector('style#fb-spin')) {
+      const s = document.createElement('style'); s.id='fb-spin';
+      s.textContent = '@keyframes spin{to{transform:rotate(360deg)}}';
+      document.head.appendChild(s);
+    }
+    document.body.appendChild(overlay);
   }
-  plans = LS.get('rwt_plans', null);
-  if (!plans) {
-    plans = { austin: JSON.parse(JSON.stringify(AUSTIN_PLAN)), carter: JSON.parse(JSON.stringify(CARTER_PLAN)), mckenna: JSON.parse(JSON.stringify(MCKENNA_PLAN)) };
-    LS.set('rwt_plans', plans);
-  }
-  sessions = LS.get('rwt_sessions', {});
-  const userIds = Object.keys(users);
-  currentUser = userIds[0] || 'austin';
-  historyViewUser = currentUser;
-  progressViewUser = currentUser;
-  renderAll();
+  document.getElementById('fb-loading-msg').textContent = msg || 'Loading…';
+  overlay.style.display = 'flex';
+}
+function hideLoading() {
+  const overlay = document.getElementById('fb-loading');
+  if (overlay) overlay.style.display = 'none';
 }
 
-function persist() {
-  LS.set('rwt_users', users);
-  LS.set('rwt_plans', plans);
-  LS.set('rwt_sessions', sessions);
+// Firestore write helpers
+async function fbSet(collection, docId, data) {
+  await db.collection(collection).doc(docId).set(data);
+}
+async function fbDelete(collection, docId) {
+  await db.collection(collection).doc(docId).delete();
+}
+async function persistUsers() { await fbSet('app_data', 'users', users); }
+async function persistPlans() { await fbSet('app_data', 'plans', plans); }
+async function persistCustomExercises(custom) { await fbSet('app_data', 'custom_exercises', custom); }
+async function persist() {
+  await Promise.all([persistUsers(), persistPlans()]);
+}
+async function getCustomExercises() {
+  const doc = await db.collection('app_data').doc('custom_exercises').get();
+  return doc.exists ? doc.data() : {};
+}
+
+// ─── INIT ─────────────────────────────────────────────────
+async function init() {
+  updateHomeDateLabel();
+  showLoading('Loading your workouts…');
+  try {
+    // Load users
+    const usersDoc = await db.collection('app_data').doc('users').get();
+    if (usersDoc.exists) {
+      users = usersDoc.data();
+    } else {
+      users = { austin: {name:'Austin',admin:true}, carter: {name:'Carter',admin:false} };
+      await fbSet('app_data', 'users', users);
+    }
+
+    // Load plans
+    const plansDoc = await db.collection('app_data').doc('plans').get();
+    if (plansDoc.exists) {
+      plans = plansDoc.data();
+    } else {
+      plans = { austin: JSON.parse(JSON.stringify(AUSTIN_PLAN)), carter: JSON.parse(JSON.stringify(CARTER_PLAN)), mckenna: JSON.parse(JSON.stringify(MCKENNA_PLAN)) };
+      await fbSet('app_data', 'plans', plans);
+    }
+
+    // Load sessions
+    const sessSnap = await db.collection('sessions').get();
+    sessions = {};
+    sessSnap.forEach(doc => { sessions[doc.id] = doc.data(); });
+
+    // Load custom exercises
+    customExercises = await getCustomExercises();
+
+    const userIds = Object.keys(users);
+    currentUser = userIds[0] || 'austin';
+    historyViewUser = currentUser;
+    progressViewUser = currentUser;
+  } catch (err) {
+    console.error('Firebase load error:', err);
+    showToast('Error loading data. Check connection.');
+  } finally {
+    hideLoading();
+  }
+  renderAll();
 }
 
 // ─── RENDER ALL ───────────────────────────────────────────
@@ -1004,13 +1071,13 @@ function addExerciseFromPicker(name, category, aerobic) {
   showToast(`${name} added`);
 }
 
-function createAndAddExercise() {
+async function createAndAddExercise() {
   const name = document.getElementById('new-ex-name').value.trim();
   const cat = document.getElementById('new-ex-cat').value;
   if (!name) { showToast('Enter a name'); return; }
   if (!cat) { showToast('Select a category'); return; }
-  saveCustomExercise(name, cat);
-  addExerciseFromPicker(name, cat, cat === 'Aerobic');
+  await saveCustomExercise(name, cat);
+  addExerciseFromPicker(name, cat, cat === 'Aerobic' || cat === 'Mobility');
   document.getElementById('new-ex-name').value = '';
   document.getElementById('new-ex-cat').value = '';
 }
@@ -1023,7 +1090,7 @@ function selectSessionType(type) {
   document.getElementById('other-label-group').style.display = type === 'other' ? '' : 'none';
 }
 
-function saveSession() {
+async function saveSession() {
   const plan = plans[currentUser] || {days:[]};
   const day = plan.days[currentLogDayIndex];
   const notes = document.getElementById('log-notes').value.trim();
@@ -1049,7 +1116,7 @@ function saveSession() {
   }
   const id = 'sess_' + now;
   sessions[id] = {...sessionData, id};
-  persist();
+  await fbSet('sessions', id, sessions[id]);
   document.getElementById('log-notes').value = '';
   document.getElementById('log-other-label').value = '';
   logExercises = [];
@@ -1213,7 +1280,7 @@ function addEditSet(ei) {
   renderEditSets(ei);
 }
 
-function saveEditedSession() {
+async function saveEditedSession() {
   const s = sessions[editingSessionId];
   if (!s) return;
   const notes = document.getElementById('edit-notes')?.value.trim() || '';
@@ -1228,7 +1295,7 @@ function saveEditedSession() {
   }
   s.notes = notes;
   sessions[editingSessionId] = s;
-  persist();
+  await fbSet('sessions', editingSessionId, s);
   closeModal('modal-edit-session');
   openDetail(editingSessionId);
   showToast('Session updated!');
@@ -1248,9 +1315,9 @@ function confirmDeleteSession(sessionId) {
   }, 3000);
 }
 
-function deleteSession(sessionId) {
+async function deleteSession(sessionId) {
   delete sessions[sessionId];
-  persist();
+  await fbDelete('sessions', sessionId);
   showToast('Session deleted');
   showScreen('screen-history');
   renderAll();
@@ -1382,7 +1449,7 @@ function renderPlanEditor() {
   exList.appendChild(card);
 }
 
-function addExerciseToPlan() {
+async function addExerciseToPlan() {
   const name = document.getElementById('new-exercise-name').value.trim();
   const sets = parseInt(document.getElementById('new-exercise-sets').value) || 3;
   const reps = parseInt(document.getElementById('new-exercise-reps').value) || 10;
@@ -1391,7 +1458,7 @@ function addExerciseToPlan() {
   if (!plan.days[planEditorDayIndex]) return;
   plan.days[planEditorDayIndex].exercises.push({name, sets, reps});
   plans[planEditorUser] = plan;
-  persist();
+  await persistPlans();
   document.getElementById('new-exercise-name').value = '';
   document.getElementById('new-exercise-sets').value = '';
   document.getElementById('new-exercise-reps').value = '';
@@ -1399,22 +1466,22 @@ function addExerciseToPlan() {
   renderLogScreen();
 }
 
-function removeExercise(ei) {
+async function removeExercise(ei) {
   const plan = plans[planEditorUser] || {days:[]};
   plan.days[planEditorDayIndex].exercises.splice(ei, 1);
   plans[planEditorUser] = plan;
-  persist();
+  await persistPlans();
   renderPlanEditor();
   renderLogScreen();
 }
 
-function addDayToPlan() {
+async function addDayToPlan() {
   const name = document.getElementById('new-day-name').value.trim();
   if (!name) return;
   const plan = plans[planEditorUser] || {days:[]};
   plan.days.push({name, exercises:[]});
   plans[planEditorUser] = plan;
-  persist();
+  await persistPlans();
   planEditorDayIndex = plan.days.length - 1;
   document.getElementById('new-day-name').value = '';
   renderPlanEditor();
@@ -1443,7 +1510,7 @@ function renderManageUsers() {
   });
 }
 
-function addUser() {
+async function addUser() {
   const name = document.getElementById('new-user-name').value.trim();
   if (!name) return;
   const id = name.toLowerCase().replace(/\s+/g, '_') + '_' + Date.now();
@@ -1453,7 +1520,7 @@ function addUser() {
   const knownPlans = {mckenna: MCKENNA_PLAN};
   const nameKey = name.toLowerCase().split(' ')[0];
   plans[id] = knownPlans[nameKey] ? JSON.parse(JSON.stringify(knownPlans[nameKey])) : {days:[]};
-  persist();
+  await persist();
   document.getElementById('new-user-name').value = '';
   renderManageUsers();
   renderAll();
@@ -1472,10 +1539,10 @@ function confirmRemoveUser(id) {
   }, 3000);
 }
 
-function removeUser(id) {
+async function removeUser(id) {
   if (currentUser === id) currentUser = Object.keys(users).find(k => k !== id) || '';
   delete users[id];
-  persist();
+  await persistUsers();
   renderManageUsers();
   renderAll();
   showToast('User removed');
