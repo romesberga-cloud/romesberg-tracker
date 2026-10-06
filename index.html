@@ -225,10 +225,8 @@ html,body{height:100%;background:var(--navy);color:var(--white);font-family:'Int
     <div><div class="topbar-title">Log Session</div><div class="topbar-sub" id="log-user-label"></div></div>
   </div>
   <div class="scroll-area">
-    <div class="input-group" style="margin-bottom:12px">
-      <div class="input-label">Session Date</div>
-      <input type="date" id="log-date" class="text-input">
-    </div>
+    <div class="section-label">Session Date</div>
+    <input type="date" id="log-date" class="text-input" style="margin-bottom:4px">
     <div class="section-label">Session Type</div>
     <div class="type-grid" id="log-type-grid">
       <div class="type-btn active" data-type="gym" onclick="selectSessionType('gym')">
@@ -552,8 +550,8 @@ let planEditorDayIndex = 0;
 let logSetData = {}; // exerciseIndex -> [{weight,reps,done}]
 let logExercises = []; // [{name, category, aerobic}] — exercises added this session
 let editingSessionId = null;
-let editSetData = {};
 let editingMode = false;
+let editSetData = {};
 
 // ─── EXERCISE LIBRARY ─────────────────────────────────────
 const EXERCISE_LIBRARY_DEFAULT = {
@@ -987,6 +985,7 @@ function renderLastSession() {
 
 // ─── LOG ──────────────────────────────────────────────────
 function renderLogScreen() {
+  document.getElementById('log-date').value = localDateStr(new Date());
   document.getElementById('log-user-label').textContent = users[currentUser]?.name || '';
   const plan = plans[currentUser] || {days:[]};
   // Day row
@@ -1161,19 +1160,22 @@ function renderExercisePicker() {
 
 function addExerciseFromPicker(name, category, aerobic) {
   if (editingMode) {
+    // Adding to an existing session being edited
     const s = sessions[editingSessionId];
-    if (s && s.type === 'gym') {
-      if (!s.exercises) s.exercises = [];
-      const newEx = {name, category, aerobic: !!aerobic, sets: [{weight:0, reps:0, done:false}]};
-      s.exercises.push(newEx);
-      const ei = s.exercises.length - 1;
-      editSetData[ei] = [{weight:'', reps:'', done:false}];
+    if (!s) return;
+    if ((s.exercises || []).find(e => e.name === name)) {
+      showToast('Already in session!');
       closeModal('modal-exercise-picker');
-      openEditSession(editingSessionId);
+      return;
     }
+    s.exercises = s.exercises || [];
+    s.exercises.push({name, category, aerobic: !!aerobic, sets: []});
+    closeModal('modal-exercise-picker');
+    openEditSession(editingSessionId);
+    showToast(`${name} added`);
     return;
   }
-  // Avoid duplicates
+  // Avoid duplicates in log flow
   if (logExercises.find(e => e.name === name)) {
     showToast('Already added!');
     closeModal('modal-exercise-picker');
@@ -1365,9 +1367,9 @@ function openEditSession(sessionId) {
     });
     // Add Exercise button for gym sessions
     const addExBtn = document.createElement('button');
-    addExBtn.onclick = openExercisePicker;
-    addExBtn.style.cssText = 'background:none;border:1px dashed var(--border);color:var(--blue);border-radius:8px;padding:8px 12px;font-size:13px;cursor:pointer;width:100%;margin-top:8px';
     addExBtn.textContent = '+ Add Exercise';
+    addExBtn.style.cssText = 'background:none;border:1px dashed var(--accent);color:var(--accent);border-radius:8px;padding:8px 14px;font-size:13px;cursor:pointer;width:100%;margin-bottom:12px';
+    addExBtn.onclick = () => openModal('modal-exercise-picker');
     container.appendChild(addExBtn);
   } else {
     container.innerHTML = `
@@ -1790,7 +1792,7 @@ function showScreen(id) {
   if (id === 'screen-history') renderHistoryList();
   if (id === 'screen-progress') renderProgress();
   if (id === 'screen-settings') renderSettings();
-  if (id === 'screen-log') { renderLogScreen(); document.getElementById('log-date').value = localDateStr(new Date()); }
+  if (id === 'screen-log') renderLogScreen();
 }
 
 function openModal(id) { document.getElementById(id).classList.remove('hidden'); }
