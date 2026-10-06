@@ -970,7 +970,7 @@ function renderLastSession() {
   const s = userSess[0];
   const typeLabel = {gym:'Gym Workout',practice:'Practice',trainer:'Trainer Session',tournament:'Tournament',other:s.otherLabel||'Other'}[s.type] || s.type;
   const typeBadge = {gym:'badge-blue',practice:'badge-orange',trainer:'badge-purple',tournament:'badge-green',other:'badge-slate'}[s.type] || 'badge-slate';
-  const dateStr = new Date(s.timestamp).toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'});
+  const dateStr = new Date((s.date||'') + 'T00:00:00').toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'});
   let statsHtml = '';
   if (s.type === 'gym' && s.exercises) {
     const totalSets = s.exercises.reduce((a,ex) => a + (ex.sets?.length||0), 0);
@@ -1266,7 +1266,7 @@ function renderHistoryList() {
     item.onclick = () => openDetail(s.id);
     const typeIcon = {gym:'🏋️',practice:'🏀',trainer:'🎯',tournament:'🏆'}[s.type] || '📋';
     const typeBadge = {gym:'badge-blue',practice:'badge-orange',trainer:'badge-purple',tournament:'badge-green',other:'badge-slate'}[s.type] || 'badge-slate';
-    const dateStr = new Date(s.timestamp).toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'});
+    const dateStr = new Date((s.date||'') + 'T00:00:00').toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'});
     let dayLabel = '', volHtml = '';
     if (s.type === 'gym') {
       dayLabel = `Day ${s.dayNum} — ${s.dayName}`;
@@ -1295,7 +1295,7 @@ function openDetail(sessionId) {
   if (!s) return;
   const u = users[s.userId];
   const typeLabel = {gym:'Gym Workout',practice:'Practice',trainer:'Trainer Session',tournament:'Tournament',other:s.otherLabel||'Other'}[s.type] || s.type;
-  const dateStr = new Date(s.timestamp).toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'});
+  const dateStr = new Date((s.date||'') + 'T00:00:00').toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'});
   document.getElementById('detail-title').textContent = s.type === 'gym' ? `Day ${s.dayNum} — ${s.dayName}` : typeLabel;
   document.getElementById('detail-sub').textContent = `${u?.name || ''} · ${dateStr}`;
   const content = document.getElementById('detail-content');
